@@ -5,7 +5,7 @@ import type {
 } from '#/adapter/vxe-table';
 import type { ApiKeyResult, CreateApiKeyParams } from '../api';
 
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { confirm, Page, useVbenModal, VbenButton } from '@vben/common-ui';
@@ -134,15 +134,15 @@ function openEditModal(row: ApiKeyResult) {
   modalApi.setData(row).open();
 }
 
-function applyExpirePreset(days: null | number) {
+async function applyExpirePreset(days: null | number) {
   if (days === null) {
-    formApi.setValues({
+    await formApi.setValues({
       expire_time: undefined,
       never_expires: true,
     });
     return;
   }
-  formApi.setValues({
+  await formApi.setValues({
     expire_time: dayjs().add(days, 'day').format('YYYY-MM-DD HH:mm:ss'),
     never_expires: false,
   });
@@ -182,6 +182,18 @@ async function onActionClick({ code, row }: OnActionClickParams<ApiKeyResult>) {
 
 const [Form, formApi] = useVbenForm({
   compact: true,
+  handleValuesChange: (
+    values: Record<string, any>,
+    fieldsChanged: string[],
+  ) => {
+    if (
+      fieldsChanged.includes('never_expires') &&
+      values.never_expires &&
+      values.expire_time
+    ) {
+      void formApi.setValues({ expire_time: undefined });
+    }
+  },
   layout: 'vertical',
   showDefaultActions: false,
   schema: useApiKeySchema(applyExpirePreset),
@@ -204,6 +216,7 @@ const [Modal, modalApi] = useVbenModal({
     }
     modalApi.lock();
     try {
+      await nextTick();
       const values = await formApi.getValues<
         CreateApiKeyParams & { never_expires?: boolean }
       >();
@@ -240,7 +253,7 @@ const [Modal, modalApi] = useVbenModal({
           }
         : undefined;
       formApi.resetForm();
-      formApi.setValues(
+      void formApi.setValues(
         formData.value ?? {
           expire_time: undefined,
           never_expires: true,
