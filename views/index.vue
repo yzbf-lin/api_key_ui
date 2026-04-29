@@ -9,7 +9,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { confirm, Page, useVbenModal, VbenButton } from '@vben/common-ui';
-import { IconifyIcon, MaterialSymbolsAdd } from '@vben/icons';
+import { MaterialSymbolsAdd } from '@vben/icons';
 import { $t } from '@vben/locales';
 
 import { useClipboard } from '@vueuse/core';
@@ -21,7 +21,6 @@ import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import {
   createApiKeyApi,
   deleteApiKeyApi,
-  getApiKeyDetailApi,
   getApiKeyListApi,
   updateApiKeyApi,
   updateApiKeyStatusApi,
@@ -35,6 +34,7 @@ const canEditApiKey = hasAccessByCodes(['sys:apikey:edit']);
 const canDeleteApiKey = hasAccessByCodes(['sys:apikey:del']);
 const { copy } = useClipboard({ legacy: true });
 const searchName = ref('');
+const createdApiKey = ref('');
 const formData = ref<
   | (CreateApiKeyParams & {
       id?: number;
@@ -111,13 +111,12 @@ async function copyApiKeyValue(
   apiKey: string,
   successMessage = '令牌已复制到剪贴板',
 ) {
+  if (!apiKey) {
+    message.warning('令牌为空，无法复制');
+    return;
+  }
   await copy(apiKey);
   message.success(successMessage);
-}
-
-async function handleCopyApiKey(row: ApiKeyResult) {
-  const detail = await getApiKeyDetailApi(row.id);
-  await copyApiKeyValue(detail.key);
 }
 
 function openCreateModal() {
@@ -232,16 +231,20 @@ const [Modal, modalApi] = useVbenModal({
       } else {
         const created = await createApiKeyApi(data);
         await copyApiKeyValue(created.key, '创建成功，令牌已复制到剪贴板');
+        createdApiKey.value = created.key;
       }
       await modalApi.close();
       await refreshGrid();
+      if (!isEdit && createdApiKey.value) {
+        secretModalApi.open();
+      }
     } finally {
       modalApi.unlock();
     }
   },
   onOpenChange(isOpen) {
     if (isOpen) {
-      const data = modalApi.getData<ApiKeyResult | null>();
+      const data = modalApi.getData<ApiKeyResult>() as ApiKeyResult | null;
       formData.value = data
         ? {
             expire_time: data.expire_time ?? undefined,
@@ -260,6 +263,17 @@ const [Modal, modalApi] = useVbenModal({
           status: 1,
         },
       );
+    }
+  },
+});
+
+const [SecretModal, secretModalApi] = useVbenModal({
+  class: 'w-5/12',
+  footer: false,
+  title: '新建 API Key（仅展示一次）',
+  onOpenChange(isOpen) {
+    if (!isOpen) {
+      createdApiKey.value = '';
     }
   },
 });
@@ -291,16 +305,6 @@ const [Modal, modalApi] = useVbenModal({
           >
             {{ row.key || '-' }}
           </a-tag>
-          <a-tooltip title="复制令牌">
-            <a-button
-              type="text"
-              size="small"
-              class="!px-1"
-              @click.stop="handleCopyApiKey(row)"
-            >
-              <IconifyIcon icon="mdi:content-copy" class="size-4" />
-            </a-button>
-          </a-tooltip>
         </div>
       </template>
     </Grid>
@@ -308,5 +312,24 @@ const [Modal, modalApi] = useVbenModal({
     <Modal :title="modalTitle">
       <Form />
     </Modal>
+    <SecretModal>
+      <a-alert
+        type="warning"
+        show-icon
+        class="mb-3"
+        message="请立即复制并妥善保存，离开此弹窗后无法再次获取完整令牌。"
+      />
+      <a-input-password
+        :value="createdApiKey"
+        readonly
+        class="font-mono"
+        :visibility-toggle="true"
+      />
+      <div class="mt-3 flex justify-end">
+        <a-button type="primary" @click="copyApiKeyValue(createdApiKey)">
+          复制令牌
+        </a-button>
+      </div>
+    </SecretModal>
   </Page>
 </template>

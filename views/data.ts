@@ -77,7 +77,7 @@ export function useColumns(
     },
     {
       field: 'key',
-      title: '令牌',
+      title: '令牌（脱敏）',
       minWidth: 220,
       align: 'center',
       showOverflow: 'tooltip',
